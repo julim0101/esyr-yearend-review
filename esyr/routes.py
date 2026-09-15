@@ -7,6 +7,7 @@
   · 원본은 static 이 아니라 인증된 경로로만 내보낸다.
 """
 import csv
+import hashlib
 import io
 import os
 import secrets
@@ -21,6 +22,7 @@ from flask import (
 from .compare import (
     change_summary_text, compare_versions, latest_comparison, load_result,
 )
+from . import storage
 from .extract import ocr_status, render_page_png, run_extraction, sha256_of
 from .models import (
     ChangeKind, DocType, DocumentGroup, DocumentVersion, Employee,
@@ -226,23 +228,20 @@ def upload():
 
         # 저장 이름은 서버가 만든다. 업로드 파일명을 경로로 쓰지 않는다.
         stored = f"{secrets.token_hex(16)}.pdf"
-        path = os.path.join(current_app.config["STORAGE_DIR"], stored)
-        file.save(path)
-        size = os.path.getsize(path)
-        digest = sha256_of(path)
+        raw = file.read()
+        size = len(raw)
+        digest = hashlib.sha256(raw).hexdigest()
 
         # 실제로 PDF로 열리는지 확인 (확장자만 믿지 않는다)
         import fitz
         try:
-            d = fitz.open(path)
+            d = fitz.open(stream=raw, filetype="pdf")
             needs_pass = d.needs_pass
             d.close()
         except Exception as e:  # noqa: BLE001
-            os.remove(path)
             flash(f"PDF로 열 수 없는 파일입니다: {e}", "error")
             return redirect(url_for("main.upload"))
         if needs_pass:
-            os.remove(path)
             flash("암호가 설정된 PDF입니다. 암호 해제 후 다시 제출해 주세요.", "error")
             return redirect(url_for("main.upload"))
 
@@ -250,13 +249,11 @@ def upload():
             grp = require_group(request.form.get("group_id", type=int))
             # 직원·귀속연도가 다른 서류로는 연결할 수 없다
             if grp.employee_id != emp.id or grp.tax_year != tax_year:
-                os.remove(path)
                 abort(400, "직원 또는 귀속연도가 다른 서류를 수정 대상으로 지정할 수 없습니다.")
         else:
             doc_type = request.form.get("doc_type") or DocType.OTHER
             name = (request.form.get("display_name") or "").strip()
             if not name:
-                os.remove(path)
                 flash("서류 표시명을 입력해 주세요. 예: A기관 기부금영수증", "error")
                 return redirect(url_for("main.upload"))
             grp = DocumentGroup(
@@ -275,7 +272,6 @@ def upload():
         )
 
         if same_current:
-            os.remove(path)
             log("duplicate_intake", "group", grp.id,
                 f"현재 파일과 동일한 재업로드 (sha {digest[:12]})", actor=g.user)
             db.session.commit()
@@ -283,7 +279,6 @@ def upload():
             return redirect(url_for("main.group_detail", gid=grp.id))
 
         if same_past:
-            os.remove(path)
             log("past_version_reupload", "group", grp.id,
                 f"과거 제출본({same_past.label})과 동일", actor=g.user)
             db.session.commit()
@@ -310,7 +305,11 @@ def upload():
         db.session.flush()
         grp.current_version_id = ver.id
 
+        storage.save_bytes(stored, raw)
+        path, tmp = storage.local_path(stored)
         run_extraction(ver, path)
+        if tmp and path:
+            os.remove(path)
         if seq > 1:
             compare_versions(grp, ver)
 
@@ -365,8 +364,10 @@ def version_detail(vid):
 @login_required
 def page_png(vid, no):
     ver = require_version(vid)
-    path = os.path.join(current_app.config["STORAGE_DIR"], ver.stored_name)
-    data = render_page_png(path, no)
+    path, tmp = storage.local_path(ver.stored_name)
+    data = render_page_png(path, no) if path else None
+    if tmp and path:
+        os.remove(path)
     if not data:
         abort(404)
     return Response(data, mimetype="image/png")
@@ -376,11 +377,9 @@ def page_png(vid, no):
 @login_required
 def version_file(vid):
     ver = require_version(vid)
-    path = os.path.join(current_app.config["STORAGE_DIR"], ver.stored_name)
-    if not os.path.exists(path):
+    data = storage.read_bytes(ver.stored_name)
+    if data is None:
         abort(404)
-    with open(path, "rb") as f:
-        data = f.read()
     return Response(
         data, mimetype="application/pdf",
         headers={"Content-Disposition": f'inline; filename="doc-{ver.id}.pdf"'},
@@ -507,4 +506,6 @@ def _safe_csv(v):
 @bp.route("/health")
 def health():
     ok, detail = ocr_status()
-    return dict(app="ESYR", ocr_available=ok, ocr_detail=detail)
+    return dict(app="ESYR", ocr_available=ok, ocr_detail=detail,
+                storage=storage.backend(), storage_detail=storage.describe(),
+                db=("postgres" if "postgres" in current_app.config["SQLALCHEMY_DATABASE_URI"] else "sqlite"))

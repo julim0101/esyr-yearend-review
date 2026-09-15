@@ -5,5 +5,9 @@ PyMuPDF==1.26.3
 pytesseract==0.3.13
 pillow==11.3.0
 
+# Supabase Postgres 사용 시 (Vercel 배포)
+psycopg[binary]==3.2.3
+
 # pytesseract 는 파이썬 래퍼일 뿐이다.
-# Tesseract 실행파일과 한국어 언어데이터(kor)는 별도로 설치해야 한다. README 참고.
+# Tesseract 실행파일과 한국어 언어데이터(kor)는 별도 설치가 필요하다. README 참고.
+# Vercel 서버리스에는 시스템 바이너리를 설치할 수 없으므로 OCR 은 로컬/서버 배포에서만 동작한다.

@@ -116,3 +116,59 @@ verify.py        검증 체크리스트
 - 저장소는 `.gitignore` 로 제외된다. 원본 PDF와 DB는 커밋되지 않는다.
 - 시연 자료는 전부 **가상자료**다. 실제 국세청 발급 문서나 실제 단체의 증빙이 아니다.
 - 실제 운영 시 보관·삭제 기간과 백업 정책은 별도로 정해야 한다.
+
+---
+
+## Vercel + Supabase 배포
+
+로컬은 SQLite + 파일, 배포는 Supabase Postgres + Supabase Storage 를 쓴다.
+같은 코드가 환경변수만 보고 갈라진다.
+
+### 1. Supabase
+
+1. 프로젝트 생성 → **Settings → Database → Connection string → URI** 복사
+   (Connection pooling / **Transaction** 모드, 포트 `6543` 권장)
+2. **Storage → New bucket** → 이름 `esyr-docs`, **Public 체크 해제**
+3. **Settings → API → service_role** 키 복사 (비공개 키. 절대 커밋하지 않는다)
+
+### 2. Vercel 환경변수
+
+| 이름 | 값 |
+|---|---|
+| `DATABASE_URL` | `postgresql://postgres.xxxx:PASSWORD@aws-0-ap-northeast-2.pooler.supabase.com:6543/postgres` |
+| `SUPABASE_URL` | `https://xxxx.supabase.co` |
+| `SUPABASE_SERVICE_KEY` | `eyJ...` (service_role) |
+| `SUPABASE_BUCKET` | `esyr-docs` |
+| `ESYR_SECRET_KEY` | 임의의 64자 hex |
+
+### 3. 테이블·계정 1회 생성
+
+로컬에서 배포용 DB를 향해 실행한다.
+
+```powershell
+$env:DATABASE_URL="postgresql://..."
+$env:SUPABASE_URL="https://xxxx.supabase.co"
+$env:SUPABASE_SERVICE_KEY="eyJ..."
+$env:SUPABASE_BUCKET="esyr-docs"
+python init_db.py --demo
+```
+
+### 4. 배포
+
+```bash
+git push        # Vercel 이 GitHub 연결 후 자동 배포
+```
+
+### 배포 환경의 제약 — 발표에서 먼저 말할 것
+
+| 항목 | 로컬 | Vercel |
+|---|---|---|
+| DB | SQLite | Supabase Postgres |
+| 원본 PDF | `instance/storage/` | Supabase Storage (비공개 버킷) |
+| **OCR (스캔 PDF)** | **동작** | **동작하지 않음** |
+
+Vercel 서버리스에는 Tesseract 같은 **시스템 바이너리를 설치할 수 없다.**
+그래서 배포본에서 스캔 PDF는 값을 추측하지 않고 `추출 확인 필요` 로 남는다.
+이것은 고장이 아니라 **설계상 선택**이다 — 읽지 못한 것을 읽은 척하지 않는다.
+
+OCR까지 포함해 운영하려면 컨테이너 기반(Render·Railway·사내 서버)에 올려야 한다.
