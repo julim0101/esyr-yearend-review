@@ -49,9 +49,10 @@ def seed_basic():
 
 def seed_demo(app, users):
     """시연 시나리오를 실제 업로드 경로로 등록한다."""
-    import shutil
+    import hashlib
+    from esyr import storage
     from esyr.compare import compare_versions
-    from esyr.extract import run_extraction, sha256_of
+    from esyr.extract import run_extraction
     from esyr.models import DocumentGroup, DocumentVersion, Review, SubmitKind
 
     samples = os.path.join(os.path.dirname(os.path.abspath(__file__)), "samples")
@@ -61,7 +62,6 @@ def seed_demo(app, users):
 
     emp = Employee.query.filter_by(emp_no="H2046").first()
     mgr = users["manager1"]
-    storage = app.config["STORAGE_DIR"]
     year = 2025
 
     def add_version(group, filename, seq):
@@ -70,20 +70,24 @@ def seed_demo(app, users):
             print("   (없음)", filename)
             return None
         import secrets
+        with open(src, "rb") as f:
+            raw = f.read()
         stored = f"{secrets.token_hex(16)}.pdf"
-        dst = os.path.join(storage, stored)
-        shutil.copyfile(src, dst)
+        storage.save_bytes(stored, raw)          # 로컬 또는 Supabase Storage
         ver = DocumentVersion(
             group_id=group.id, prev_version_id=group.current_version_id, seq=seq,
             stored_name=stored, orig_filename=filename,
-            sha256=sha256_of(dst), byte_size=os.path.getsize(dst),
+            sha256=hashlib.sha256(raw).hexdigest(), byte_size=len(raw),
             submit_kind=SubmitKind.REVISION if seq > 1 else SubmitKind.NEW,
             uploaded_by_id=mgr.id,
         )
         db.session.add(ver)
         db.session.flush()
         group.current_version_id = ver.id
-        run_extraction(ver, dst)
+        path, tmp = storage.local_path(stored)
+        run_extraction(ver, path)
+        if tmp and path:
+            os.remove(path)
         if seq > 1:
             compare_versions(group, ver)
         db.session.flush()
