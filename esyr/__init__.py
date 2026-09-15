@@ -28,9 +28,9 @@ def _database_uri():
         return "sqlite:///" + os.path.join(INSTANCE_DIR, "esyr.sqlite3")
     # Supabase / Heroku 계열이 주는 postgres:// 를 SQLAlchemy 드라이버 형식으로 맞춘다
     if url.startswith("postgres://"):
-        url = url.replace("postgres://", "postgresql+psycopg://", 1)
+        url = url.replace("postgres://", "postgresql+pg8000://", 1)
     elif url.startswith("postgresql://"):
-        url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+        url = url.replace("postgresql://", "postgresql+pg8000://", 1)
     return url
 
 
@@ -69,7 +69,9 @@ def create_app(config=None):
 
     # 배포 환경에서 설정이 빠졌으면 500 대신 무엇이 없는지 알려준다
     if serverless:
-        missing = [k for k in ("DATABASE_URL", "ESYR_SECRET_KEY") if not os.environ.get(k)]
+        missing = [k for k in ("DATABASE_URL", "ESYR_SECRET_KEY", "SUPABASE_URL",
+                               "SUPABASE_SERVICE_KEY", "SUPABASE_BUCKET")
+                       if not os.environ.get(k)]
         if missing:
             @app.route("/", defaults={"_p": ""})
             @app.route("/<path:_p>")

@@ -1,0 +1,16 @@
+# 배포 번들에서 제외 — 함수 용량을 줄인다
+samples/
+tessdata/
+ocr_models/
+instance/
+verify.py
+make_samples.py
+seed.py
+init_db.py
+run.py
+run.bat
+README.md
+*.md
+esyr/static/brand/*_5x.png
+__pycache__/
+.git/

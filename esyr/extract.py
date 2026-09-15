@@ -60,7 +60,10 @@ def _prepare_ocr():
     try:
         import pytesseract
     except ImportError:
-        return None, "pytesseract 파이썬 패키지가 설치되어 있지 않습니다."
+        return None, (
+            "pytesseract 가 설치되어 있지 않습니다. "
+            "서버리스(Vercel) 배포본에서는 OCR 을 사용할 수 없습니다."
+        )
 
     exe = _find_tesseract()
     if not exe:

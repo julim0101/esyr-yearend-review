@@ -28,7 +28,14 @@ def init_app(app):
     else:
         _BACKEND = "local"
         _CONF = {"dir": app.config["STORAGE_DIR"]}
-        os.makedirs(_CONF["dir"], exist_ok=True)
+        # 서버리스는 파일시스템이 읽기 전용이다. 폴더를 만들려다 앱이 죽으면 안 된다.
+        try:
+            os.makedirs(_CONF["dir"], exist_ok=True)
+        except OSError:
+            _CONF["unavailable"] = (
+                "이 환경에서는 로컬 파일 저장을 쓸 수 없습니다. "
+                "SUPABASE_URL / SUPABASE_SERVICE_KEY / SUPABASE_BUCKET 을 설정하세요."
+            )
     app.config["STORAGE_BACKEND"] = _BACKEND
 
 
@@ -39,7 +46,13 @@ def backend():
 def describe():
     if _BACKEND == "supabase":
         return f"Supabase Storage · 버킷 {_CONF['bucket']}"
+    if _CONF.get("unavailable"):
+        return "사용 불가 — " + _CONF["unavailable"]
     return f"로컬 파일 · {_CONF.get('dir', '')}"
+
+
+def available():
+    return _BACKEND == "supabase" or not _CONF.get("unavailable")
 
 
 # ─────────────────────────────────────────────────────────────
