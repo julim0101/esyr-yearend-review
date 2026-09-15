@@ -46,21 +46,63 @@
 {% endif %}
 
 <div class="split">
-  {# ── 왼쪽: 원본 ───────────────────────── #}
+  {# ── 왼쪽: 원본 (기준본 ↔ 현재본 전환) ───────────── #}
   <div>
     <div class="pdfbox">
-      {% if ver.render_ok %}
-        <img src="{{ url_for('main.page_png', vid=ver.id, no=page) }}" alt="{{ page }}페이지">
-        <div class="pdfnav">
-          {% if page > 1 %}<a class="btn sm" href="?page={{ page-1 }}">이전</a>{% endif %}
-          <span class="tnum">{{ page }} / {{ ver.page_count or 1 }}</span>
-          {% if page < (ver.page_count or 1) %}<a class="btn sm" href="?page={{ page+1 }}">다음</a>{% endif %}
+      {% if base_ver %}
+      <div class="pdftabs">
+        <a href="?page={{ page }}&amp;show=new"
+           class="{{ 'on' if show != 'base' }}">현재 {{ ver.label }}</a>
+        <a href="?page={{ page }}&amp;show=base"
+           class="{{ 'on' if show == 'base' }}">기준 {{ base_ver.label }}</a>
+        <a href="?page={{ page }}&amp;show=both"
+           class="{{ 'on' if show == 'both' }}">나란히</a>
+      </div>
+      {% endif %}
+
+      {% set shown = base_ver if (show == 'base' and base_ver) else ver %}
+
+      {% if show == 'both' and base_ver %}
+        {# 두 본을 좌우로 함께 #}
+        <div class="pdfpair">
+          <div>
+            <div class="pdfcap base">기준 · {{ base_ver.label }}</div>
+            {% if base_ver.render_ok %}
+              <img src="{{ url_for('main.page_png', vid=base_ver.id, no=page) }}" alt="기준 {{ page }}페이지">
+            {% else %}
+              <div class="pdferr">표시할 수 없음</div>
+            {% endif %}
+          </div>
+          <div>
+            <div class="pdfcap new">현재 · {{ ver.label }}</div>
+            {% if ver.render_ok %}
+              <img src="{{ url_for('main.page_png', vid=ver.id, no=page) }}" alt="현재 {{ page }}페이지">
+            {% else %}
+              <div class="pdferr">표시할 수 없음</div>
+            {% endif %}
+          </div>
         </div>
+      {% elif shown.render_ok %}
+        {% if show == 'base' %}<div class="pdfcap base">기준 · {{ base_ver.label }}</div>{% endif %}
+        <img src="{{ url_for('main.page_png', vid=shown.id, no=page) }}" alt="{{ page }}페이지">
       {% else %}
-        <div style="padding:40px 20px;text-align:center;color:var(--red);font-size:13px">
+        <div class="pdferr">
           원본 페이지를 표시할 수 없습니다.<br>
-          <span class="note">{{ ver.load_error or '렌더링 실패' }}</span>
+          <span class="note">{{ shown.load_error or '렌더링 실패' }}</span>
         </div>
+      {% endif %}
+
+      <div class="pdfnav">
+        {% set maxp = [ver.page_count or 1, (base_ver.page_count or 1) if base_ver else 1] | max %}
+        {% if page > 1 %}<a class="btn sm" href="?page={{ page-1 }}&amp;show={{ show }}">이전</a>{% endif %}
+        <span class="tnum">{{ page }} / {{ maxp }}</span>
+        {% if page < maxp %}<a class="btn sm" href="?page={{ page+1 }}&amp;show={{ show }}">다음</a>{% endif %}
+      </div>
+
+      {% if base_ver %}
+      <div class="note" style="text-align:center;padding-top:4px">
+        페이지 순서가 바뀌었을 수 있습니다. 같은 쪽 번호가 같은 내용을 뜻하지 않습니다.
+      </div>
       {% endif %}
     </div>
   </div>

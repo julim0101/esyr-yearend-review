@@ -441,9 +441,10 @@ def version_detail(vid):
     result = load_result(cmp_)
     base_ver = db.session.get(DocumentVersion, cmp_.base_version_id) if cmp_ and cmp_.base_version_id else None
     page = request.args.get("page", type=int) or 1
+    show = request.args.get("show") or "new"   # new | base | both
     return render_template(
         "version.html", ver=ver, grp=grp, run=run, cmp_=cmp_, result=result,
-        base_ver=base_ver, page=page,
+        base_ver=base_ver, page=page, show=show,
         is_current=(grp.current_version_id == ver.id),
     )
 

@@ -150,3 +150,17 @@ table.grid tr:hover td{background:#FAFAF9}
 .side .lg{display:block}
 .side .lg img{height:17px;width:auto;display:block;margin-bottom:5px}
 .side .lg i{font-style:normal;color:var(--or);font-size:10px;letter-spacing:.1em;font-weight:700;display:block}
+
+/* ── 원본 보기: 기준본 ↔ 현재본 전환 ───────── */
+.pdftabs{display:flex;gap:3px;margin-bottom:8px}
+.pdftabs a{flex:1;text-align:center;padding:6px 4px;border-radius:7px;font-size:12px;
+  font-weight:700;color:var(--mut);text-decoration:none;background:#fff;border:1px solid var(--line)}
+.pdftabs a:hover{color:var(--ink)}
+.pdftabs a.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.pdfpair{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.pdfpair img{width:100%;display:block;border:1px solid var(--line);background:#fff}
+.pdfcap{font-size:11px;font-weight:700;padding:3px 6px;margin-bottom:3px;border-radius:4px;text-align:center}
+.pdfcap.base{background:var(--card);color:var(--sub)}
+.pdfcap.new{background:var(--amb-bg);color:var(--amb)}
+.pdferr{padding:34px 16px;text-align:center;color:var(--red);font-size:12.5px}
+@media (max-width:900px){ .pdfpair{grid-template-columns:1fr} }
