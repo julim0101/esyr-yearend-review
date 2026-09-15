@@ -31,35 +31,104 @@ TOOL_VERSION = f"PyMuPDF {fitz.version[0]}"
 # OCR 준비 상태 — 있는 그대로 보고한다
 # ─────────────────────────────────────────────────────────────
 
+# 프로젝트 안에 넣어 둔 언어데이터를 우선 사용한다 (Program Files 쓰기 권한 불필요)
+_PROJECT_TESSDATA = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tessdata"
+)
+
+# Windows 기본 설치 경로 — PATH 에 없어도 찾는다
+_TESS_CANDIDATES = [
+    r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+    r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+    "/usr/bin/tesseract",
+    "/usr/local/bin/tesseract",
+]
+
+
+def _find_tesseract():
+    exe = shutil.which("tesseract")
+    if exe:
+        return exe
+    for c in _TESS_CANDIDATES:
+        if os.path.isfile(c):
+            return c
+    return None
+
+
+def _prepare_ocr():
+    """pytesseract 가 실행파일과 언어데이터를 찾도록 설정한다."""
+    try:
+        import pytesseract
+    except ImportError:
+        return None, "pytesseract 파이썬 패키지가 설치되어 있지 않습니다."
+
+    exe = _find_tesseract()
+    if not exe:
+        return None, (
+            "Tesseract 실행파일을 찾지 못했습니다. "
+            "pip 설치만으로는 준비되지 않습니다. "
+            "Windows: winget install UB-Mannheim.TesseractOCR (README 참고)"
+        )
+    pytesseract.pytesseract.tesseract_cmd = exe
+
+    # 언어데이터 위치 — 경로에 한글이 있으면 Tesseract 가 못 읽으므로 ASCII 경로를 우선한다
+    for cand in _tessdata_candidates():
+        if os.path.isfile(os.path.join(cand, "kor.traineddata")) and cand.isascii():
+            os.environ["TESSDATA_PREFIX"] = cand
+            break
+    return pytesseract, None
+
+
+def _tessdata_candidates():
+    out = []
+    env = os.environ.get("ESYR_TESSDATA")
+    if env:
+        out.append(env)
+    local = os.environ.get("LOCALAPPDATA")
+    if local:
+        out.append(os.path.join(local, "esyr", "tessdata"))
+    out.append(_PROJECT_TESSDATA)
+    out.append(r"C:\Program Files\Tesseract-OCR\tessdata")
+    out.append("/usr/share/tesseract-ocr/5/tessdata")
+    return out
+
+
+def has_kor_data():
+    """kor.traineddata 가 실제로 있는지 파일로 확인한다 (stdout 파싱에 의존하지 않는다)."""
+    for cand in _tessdata_candidates():
+        if os.path.isfile(os.path.join(cand, "kor.traineddata")):
+            return True, cand
+    return False, None
+
+
+def ocr_config():
+    """OCR 실행 시 넘길 추가 설정 (언어데이터 경로 지정).
+
+    pytesseract 는 config 문자열을 split() 해서 인자로 넘기므로 따옴표를 붙이면 안 된다.
+    공백이 든 경로는 그래서 쓸 수 없다 — ASCII·공백 없는 경로를 고른다.
+    """
+    p = os.environ.get("TESSDATA_PREFIX")
+    if p and " " not in p:
+        return f"--tessdata-dir {p}"
+    return ""
+
+
 def ocr_status():
     """Tesseract 실행파일과 한국어 언어데이터가 준비됐는지 확인한다.
 
     반환: (available: bool, detail: str)
     """
-    try:
-        import pytesseract
-    except ImportError:
-        return False, "pytesseract 파이썬 패키지가 설치되어 있지 않습니다."
+    pytesseract, err = _prepare_ocr()
+    if err:
+        return False, err
 
-    exe = shutil.which("tesseract") or getattr(pytesseract.pytesseract, "tesseract_cmd", None)
-    if not exe or not shutil.which(exe if os.path.isabs(exe) else "tesseract"):
-        if not (exe and os.path.isfile(exe)):
-            return False, (
-                "Tesseract 실행파일을 찾지 못했습니다. "
-                "pip 설치만으로는 준비되지 않으며 별도 설치가 필요합니다. "
-                "(README의 OCR 설치 안내 참고)"
-            )
-    try:
-        langs = pytesseract.get_languages(config="")
-    except Exception as e:  # noqa: BLE001
-        return False, f"Tesseract 실행 확인 실패: {e}"
-
-    if "kor" not in langs:
+    ok, where = has_kor_data()
+    if not ok:
         return False, (
-            f"Tesseract는 설치되어 있으나 한국어 언어데이터(kor)가 없습니다. "
-            f"설치된 언어: {', '.join(sorted(langs)[:10])}"
+            "Tesseract는 설치되어 있으나 한국어 언어데이터(kor.traineddata)가 없습니다. "
+            "README의 언어데이터 설치 안내를 참고하세요."
         )
-    return True, f"Tesseract 사용 가능 (언어: kor, eng)"
+    return True, f"Tesseract 사용 가능 (kor+eng · 언어데이터: {where})"
 
 
 # ─────────────────────────────────────────────────────────────
@@ -164,13 +233,16 @@ def read_pages(path, max_pages=50):
             # 텍스트 레이어가 없거나 빈약하다 → OCR 대상
             if ocr_ok:
                 try:
-                    import pytesseract
                     from PIL import Image
                     import io as _io
 
-                    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+                    pytesseract, _err = _prepare_ocr()
+                    # 해상도를 올려야 한글 인식률이 확보된다
+                    pix = page.get_pixmap(matrix=fitz.Matrix(3, 3))
                     img = Image.open(_io.BytesIO(pix.tobytes("png")))
-                    ocr_text = pytesseract.image_to_string(img, lang="kor+eng")
+                    ocr_text = pytesseract.image_to_string(
+                        img, lang="kor+eng", config=ocr_config()
+                    )
                     if len(ocr_text.strip()) >= 10:
                         rec.update(text=ocr_text, method="ocr", ok=True)
                         rec["note"] = "스캔 페이지를 OCR로 읽었습니다."

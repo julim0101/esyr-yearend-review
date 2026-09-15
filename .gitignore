@@ -15,3 +15,6 @@ venv/
 # OS
 Thumbs.db
 .DS_Store
+
+# OCR 언어데이터 (용량 큼 — README 안내대로 내려받는다)
+tessdata/
