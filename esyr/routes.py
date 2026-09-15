@@ -64,10 +64,15 @@ def check_csrf():
 
 
 def visible_employees():
+    """요청당 한 번만 조회한다 (한 화면에서 여러 번 호출된다)."""
+    cached = getattr(g, "_visible_emps", None)
+    if cached is not None:
+        return cached
     q = Employee.query
     if not g.user.is_admin:
         q = q.filter_by(manager_id=g.user.id)
-    return q.order_by(Employee.emp_no).all()
+    g._visible_emps = q.order_by(Employee.emp_no).all()
+    return g._visible_emps
 
 
 def require_employee(emp_id):
@@ -208,13 +213,17 @@ def build_group_states(groups):
 @bp.route("/")
 @login_required
 def dashboard():
-    years = sorted({g_.tax_year for g_ in _groups_query().all()}, reverse=True)
-    tax_year = request.args.get("year", type=int) or (years[0] if years else datetime.now().year - 1)
     kw = (request.args.get("q") or "").strip()
     state_filter = request.args.get("state") or ""
     type_filter = request.args.get("type") or ""
 
-    groups = _groups_query(tax_year).all()
+    # 전체 묶음을 한 번만 가져와 연도 목록과 대상 목록을 함께 만든다
+    from sqlalchemy.orm import joinedload
+    all_groups = _groups_query().options(joinedload(DocumentGroup.employee)).all()
+    years = sorted({g_.tax_year for g_ in all_groups}, reverse=True)
+    tax_year = request.args.get("year", type=int) or (years[0] if years else datetime.now().year - 1)
+
+    groups = [g_ for g_ in all_groups if g_.tax_year == tax_year]
     states = build_group_states(groups)
 
     rows = []
