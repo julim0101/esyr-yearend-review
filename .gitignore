@@ -24,3 +24,7 @@ ocr_models/
 
 .vercel
 .env*
+
+# CLI 임시 파일
+supabase/.temp/
+.env.local
