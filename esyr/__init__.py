@@ -67,6 +67,23 @@ def create_app(config=None):
     from .routes import bp
     app.register_blueprint(bp)
 
+    # 배포 환경에서 설정이 빠졌으면 500 대신 무엇이 없는지 알려준다
+    if serverless:
+        missing = [k for k in ("DATABASE_URL", "ESYR_SECRET_KEY") if not os.environ.get(k)]
+        if missing:
+            @app.route("/", defaults={"_p": ""})
+            @app.route("/<path:_p>")
+            def _setup(_p):  # noqa: ANN001
+                return (
+                    "<h1 style='font-family:sans-serif'>ESYR 설정 미완료</h1>"
+                    "<p style='font-family:sans-serif'>Vercel 환경변수가 없습니다: <b>"
+                    + ", ".join(missing)
+                    + "</b></p><p style='font-family:sans-serif'>"
+                    "Vercel → Settings → Environment Variables 에서 등록한 뒤 재배포하세요."
+                    " (README의 배포 절차 참고)</p>",
+                    503,
+                )
+
     # 서버리스에서는 매 요청마다 create_all 을 돌리지 않는다 (init_db.py 로 1회 생성)
     if not serverless:
         with app.app_context():

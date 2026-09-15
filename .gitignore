@@ -18,3 +18,6 @@ Thumbs.db
 
 # OCR 언어데이터 (용량 큼 — README 안내대로 내려받는다)
 tessdata/
+
+# ONNX OCR 검증용 모델 (정확도 미달로 채택하지 않음 — README 참고)
+ocr_models/
