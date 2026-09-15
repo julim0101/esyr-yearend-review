@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}ESYR{% endblock %} · ESYR</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%23FF6D2D%27/%3E%3Cpath d=%27M9 16.5l4.5 4.5L23 11.5%27 stroke=%27white%27 stroke-width=%273.2%27 fill=%27none%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27/%3E%3C/svg%3E">
+<link rel="stylesheet" href="{{ url_for('static', filename='esyr.css') }}">
+</head>
+<body>
+{% if g.user %}
+<div class="app">
+  <aside class="side">
+    <div class="lg">
+      <img src="{{ url_for('static', filename='brand/payroll_white_2x.png') }}" alt="etners payroll">
+      <i>ESYR · 연말정산 검토</i>
+    </div>
+    <nav>
+      <a href="{{ url_for('main.dashboard') }}" class="{{ 'on' if request.endpoint=='main.dashboard' }}">검토 현황</a>
+      <a href="{{ url_for('main.upload') }}" class="{{ 'on' if request.endpoint=='main.upload' }}">자료 등록</a>
+    </nav>
+    <div class="me">
+      <b>{{ g.user.display_name }}</b>
+      {{ '관리자' if g.user.is_admin else '연말정산 담당자' }}<br>
+      <a href="{{ url_for('main.logout') }}">로그아웃</a>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="top">
+      <h1>{% block h1 %}{% endblock %}</h1>
+      <span class="cr">{% block crumb %}{% endblock %}</span>
+      <span class="sp"></span>
+      {% block topright %}{% endblock %}
+    </div>
+    <div class="wrap">
+      {% with msgs = get_flashed_messages(with_categories=true) %}
+        {% for cat, m in msgs %}<div class="flash {{ cat }}">{{ m }}</div>{% endfor %}
+      {% endwith %}
+      {% block body %}{% endblock %}
+    </div>
+  </main>
+</div>
+{% else %}
+  {% block anon %}{% endblock %}
+{% endif %}
+</body>
+</html>

@@ -1,0 +1,9 @@
+# ESYR — 실제 검증한 버전
+Flask==3.1.3
+Flask-SQLAlchemy==3.1.1
+PyMuPDF==1.26.3
+pytesseract==0.3.13
+pillow==11.3.0
+
+# pytesseract 는 파이썬 래퍼일 뿐이다.
+# Tesseract 실행파일과 한국어 언어데이터(kor)는 별도로 설치해야 한다. README 참고.

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}{{ emp.name }} 자료함{% endblock %}
+{% block h1 %}{{ emp.name }}<span style="font-weight:600;color:var(--mut);font-size:13.5px"> · {{ emp.emp_no }}</span>{% endblock %}
+{% block crumb %}{{ tax_year }}년 귀속 · 담당 {{ emp.manager.display_name }}{% endblock %}
+{% block topright %}
+  <a class="btn primary" href="{{ url_for('main.upload', employee_id=emp.id) }}">자료 등록</a>
+{% endblock %}
+
+{% block body %}
+<form method="get" style="margin-bottom:14px">
+  <select name="year" class="btn" style="padding:7px 10px" onchange="this.form.submit()">
+    {% for y in years %}<option value="{{ y }}" {{ 'selected' if y==tax_year }}>{{ y }}년 귀속</option>{% endfor %}
+    {% if not years %}<option>{{ tax_year }}년 귀속</option>{% endif %}
+  </select>
+</form>
+
+<table class="grid">
+  <tr>
+    <th style="width:30%">서류</th><th>제출 이력</th>
+    <th style="width:120px">현재 버전</th><th style="width:110px">검토 상태</th><th style="width:70px"></th>
+  </tr>
+  {% for grp in groups %}
+  <tr>
+    <td>
+      <div style="font-weight:700">{{ grp.display_name }}</div>
+      <div class="note">{{ grp.doc_type_label }}</div>
+    </td>
+    <td>
+      {% for v in grp.version_list %}
+      <div style="font-size:12.5px;padding:2px 0;{{ 'opacity:.55' if v.id != grp.current_version_id }}">
+        <a href="{{ url_for('main.version_detail', vid=v.id) }}" style="font-weight:600">{{ v.label }}</a>
+        <span class="note">
+          · {{ v.uploaded_at.strftime('%m/%d %H:%M') }}
+          · {{ SubmitKind.LABELS[v.submit_kind] }}
+          {% if v.is_reviewed %}<span class="tag done" style="margin-left:4px">검토 완료</span>{% endif %}
+        </span>
+      </div>
+      {% endfor %}
+    </td>
+    <td class="tnum">{{ grp.current_version.label if grp.current_version else '—' }}</td>
+    <td><span class="tag {{ grp.review_state }}">{{ ReviewState.LABELS[grp.review_state] }}</span></td>
+    <td>
+      <a class="btn sm" href="{{ url_for('main.upload', employee_id=emp.id, group_id=grp.id) }}">수정본</a>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5" style="padding:34px;text-align:center;color:var(--mut)">등록된 자료가 없습니다.</td></tr>
+  {% endfor %}
+</table>
+
+<p class="note" style="margin-top:14px">
+  새 영수증은 <b>새 서류</b>로 등록하세요. 기존 서류를 교체하지 않습니다.
+  같은 기관의 수정본만 <b>수정본</b>으로 등록합니다.
+</p>
+{% endblock %}

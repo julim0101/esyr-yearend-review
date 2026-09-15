@@ -1,0 +1,17 @@
+# 업로드 원본·DB — 절대 올리지 않는다 (개인정보)
+instance/
+*.sqlite3
+*.db
+
+# 생성물
+samples/*.pdf
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.env.local
+
+# OS
+Thumbs.db
+.DS_Store

@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% block title %}{{ grp.display_name }}{% endblock %}
+{% block h1 %}{{ grp.display_name }}{% endblock %}
+{% block crumb %}
+  {{ grp.employee.name }} ({{ grp.employee.emp_no }}) · {{ grp.tax_year }}년 귀속 · {{ ver.label }}
+{% endblock %}
+{% block topright %}
+  <a class="btn" href="{{ url_for('main.employee', emp_id=grp.employee_id, year=grp.tax_year) }}">자료함</a>
+  <a class="btn" href="{{ url_for('main.version_file', vid=ver.id) }}" target="_blank">원본 PDF</a>
+{% endblock %}
+
+{% block body %}
+
+{% if not is_current %}
+<div class="flash warn">
+  이 버전은 현재 버전이 아닙니다. 더 최신 제출본이 있습니다.
+  이 화면에서 완료 처리해도 최신 버전은 완료되지 않습니다.
+</div>
+{% endif %}
+
+<div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+  <span class="tag {{ ver.review_state }}">{{ ver.review_state_label }}</span>
+  {% if run %}
+    <span class="tag plain">추출 {{ run.status_label }}</span>
+    <span class="note">
+      전체 {{ run.pages_total }}p · 텍스트 {{ run.pages_text }}p
+      {% if run.pages_ocr %}· OCR {{ run.pages_ocr }}p{% endif %}
+      {% if run.pages_failed %}· <b style="color:var(--red)">읽지 못함 {{ run.pages_failed }}p</b>{% endif %}
+      · {{ run.tool_version }}
+    </span>
+  {% endif %}
+</div>
+
+{% if run and run.error %}
+<div class="warnbox">
+  <b>읽기 제한 사항</b><br>
+  {% for line in run.error.split('\n') %}{{ line }}<br>{% endfor %}
+  이 내용은 자동 비교로 해결되지 않습니다. 원본을 직접 확인해 주세요.
+</div>
+{% endif %}
+
+{% if result.warnings %}
+<div class="warnbox">
+  {% for w in result.warnings %}<div>· {{ w }}</div>{% endfor %}
+</div>
+{% endif %}
+
+<div class="split">
+  {# ── 왼쪽: 원본 ───────────────────────── #}
+  <div>
+    <div class="pdfbox">
+      {% if ver.render_ok %}
+        <img src="{{ url_for('main.page_png', vid=ver.id, no=page) }}" alt="{{ page }}페이지">
+        <div class="pdfnav">
+          {% if page > 1 %}<a class="btn sm" href="?page={{ page-1 }}">이전</a>{% endif %}
+          <span class="tnum">{{ page }} / {{ ver.page_count or 1 }}</span>
+          {% if page < (ver.page_count or 1) %}<a class="btn sm" href="?page={{ page+1 }}">다음</a>{% endif %}
+        </div>
+      {% else %}
+        <div style="padding:40px 20px;text-align:center;color:var(--red);font-size:13px">
+          원본 페이지를 표시할 수 없습니다.<br>
+          <span class="note">{{ ver.load_error or '렌더링 실패' }}</span>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── 오른쪽: 추출 / 비교 ────────────────── #}
+  <div>
+    {% if cmp_ %}
+    <div class="sect" style="margin-top:0">
+      <h2>수정본 비교</h2>
+      <p class="note">
+        비교 기준:
+        {% if base_ver %}
+          <b>{{ base_ver.label }}</b>
+          {% if cmp_.base_is_reviewed %}(검토 완료된 마지막 버전){% else %}
+            <b style="color:var(--amb)">— 최초 검토 미완료</b> (완료된 버전이 없어 직전 제출본과 비교){% endif %}
+        {% else %}없음{% endif %}
+        → <b>{{ ver.label }}</b>
+      </p>
+
+      {% for r in result.rows %}
+        {% if r.kind != 'same' %}
+        <div class="chg {{ r.kind }}" style="padding:9px 12px;margin-bottom:6px;border-radius:0 7px 7px 0">
+          <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+            <b style="font-size:13px">{{ r.label }}</b>
+            <span class="tag plain" style="font-size:10.5px">{{ r.kind_label }}</span>
+            {% if r.new_page %}
+              <a class="note" href="?page={{ r.new_page }}">{{ r.new_page }}p 보기</a>
+            {% elif r.old_page %}
+              <a class="note" href="?page={{ r.old_page }}">기준 {{ r.old_page }}p</a>
+            {% endif %}
+          </div>
+          <div class="tnum" style="margin-top:3px;font-size:13.5px">
+            {% if r.old is not none %}<span class="old">{{ r.old }}</span>{% else %}<span class="note">(이전 없음)</span>{% endif %}
+            <span class="arrow">→</span>
+            {% if r.new is not none %}<span class="new">{{ r.new }}</span>{% else %}<span class="note">(이번에 찾지 못함)</span>{% endif %}
+          </div>
+          {% if r.kind == 'missing' %}
+          <div class="note" style="margin-top:3px">
+            삭제로 확정하지 않았습니다. 페이지 누락·추출 실패일 수 있으니 원본을 확인하세요.
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+      {% endfor %}
+
+      {% set same_n = result.summary.get('same', 0) %}
+      {% if same_n %}
+        <p class="note">비교값이 같은 항목 {{ same_n }}건은 접었습니다.
+          파일이 달라졌으므로 값이 같아도 자동으로 완료되지 않습니다.</p>
+      {% endif %}
+      {% if not result.rows %}
+        <p class="note">비교할 추출 항목이 없습니다. 원본을 직접 확인해 주세요.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="sect" {% if not cmp_ %}style="margin-top:0"{% endif %}>
+      <h2>추출 결과</h2>
+      <p class="note">원문과 추출값을 함께 보여줍니다. 값을 고치면 원래 OCR 원문은 그대로 보존됩니다.</p>
+
+      <table class="grid">
+        <tr><th>항목</th><th style="width:34%">값</th><th style="width:60px">페이지</th><th style="width:70px">방식</th></tr>
+        {% for f in (run.fields if run else []) %}
+        <tr>
+          <td>
+            {{ f.field_label }}
+            {% if f.confirm_state == 'corrected' %}<span class="tag plain" style="font-size:10px">수정됨</span>{% endif %}
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('main.correct_field', fid=f.id) }}"
+                  style="display:flex;gap:4px;align-items:center">
+              <input type="hidden" name="csrf" value="{{ csrf_token }}">
+              <input type="text" name="value" value="{{ f.display_value }}" class="tnum"
+                     style="flex:1;min-width:80px;padding:5px 8px;border:1px solid var(--line);border-radius:6px">
+              <button class="btn sm" type="submit">저장</button>
+            </form>
+            {% if f.raw_value and f.raw_value != f.display_value %}
+              <div class="note">원문: {{ f.raw_value }}</div>
+            {% endif %}
+            {% for c in f.corrections %}
+              <div class="note">↳ {{ c.old_value }} → {{ c.new_value }} · {{ c.user.display_name }} · {{ c.created_at.strftime('%m/%d %H:%M') }}</div>
+            {% endfor %}
+          </td>
+          <td>{% if f.page_no %}<a href="?page={{ f.page_no }}">{{ f.page_no }}p</a>{% endif %}</td>
+          <td class="note">{{ f.method_label }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="note" style="padding:20px 0">
+          자동으로 추출한 항목이 없습니다. 지원하지 않는 서식이거나 읽지 못한 파일입니다.
+          원본을 직접 확인한 뒤 아래에서 수동으로 완료할 수 있습니다.
+        </td></tr>
+        {% endfor %}
+      </table>
+    </div>
+
+    {# ── 검토 완료 ──────────────────────── #}
+    <div class="sect">
+      <h2>검토</h2>
+      {% if ver.is_reviewed %}
+        <div class="flash ok" style="margin:0">
+          {% for r in ver.reviews if r.kind == 'complete' %}
+            {{ r.reviewer.display_name }} · {{ r.created_at.strftime('%Y-%m-%d %H:%M') }} 검토 완료
+            {% if r.manual_reason %}<div class="note">수동 검토 사유: {{ r.manual_reason }}</div>{% endif %}
+            {% if r.note %}<div class="note">메모: {{ r.note }}</div>{% endif %}
+          {% endfor %}
+        </div>
+      {% else %}
+        <form method="post" action="{{ url_for('main.complete', vid=ver.id) }}" class="panel">
+          <input type="hidden" name="csrf" value="{{ csrf_token }}">
+          <div class="fld">
+            <label>검토 메모 (선택)</label>
+            <textarea name="note" rows="2" placeholder="확인한 내용"></textarea>
+          </div>
+          {% if run and (run.has_unread or run.status in ['partial','failed']) %}
+          <div class="fld">
+            <label>수동 검토 사유 <span style="color:var(--red)">(필수)</span></label>
+            <input type="text" name="manual_reason" placeholder="예: 3p 스캔본을 원본으로 직접 확인함">
+            <div class="hint">
+              읽지 못한 페이지·미지원 서식이 있습니다. 자동 비교로 해결된 것으로 처리하지 않습니다.
+              원본을 직접 확인했다는 기록이 있어야 완료할 수 있습니다.
+            </div>
+          </div>
+          {% endif %}
+          <button class="btn primary" type="submit" {{ 'disabled' if not ver.render_ok }}>
+            현재 버전 검토 완료
+          </button>
+          {% if not ver.render_ok %}
+            <div class="hint" style="color:var(--red)">원본을 표시할 수 없어 이 앱에서 완료할 수 없습니다.</div>
+          {% endif %}
+        </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}검토 현황{% endblock %}
+{% block h1 %}검토 현황{% endblock %}
+{% block crumb %}{{ tax_year }}년 귀속{% endblock %}
+{% block topright %}
+  <a class="btn" href="{{ url_for('main.export_csv', year=tax_year) }}">검토 현황 CSV</a>
+  <a class="btn primary" href="{{ url_for('main.upload') }}">자료 등록</a>
+{% endblock %}
+
+{% block body %}
+
+{% if not ocr_ok %}
+<div class="flash warn">
+  <b>OCR 미사용 상태</b> — {{ ocr_detail }}<br>
+  스캔 PDF는 <b>추출 확인 필요</b>로 남으며, 값을 추측해서 채우지 않습니다.
+</div>
+{% endif %}
+
+<div class="stats">
+  <div><div class="k">제출된 서류</div><div class="v tnum">{{ total }}<small>건</small></div></div>
+  <div><div class="k">검토 완료</div><div class="v tnum grn">{{ done }}<small>건</small></div></div>
+  <div><div class="k">재확인 필요</div><div class="v tnum amb">{{ counts['recheck'] }}<small>건</small></div></div>
+  <div><div class="k">추출 확인 필요</div><div class="v tnum red">{{ counts['extract_check'] }}<small>건</small></div></div>
+  <div><div class="k">신규 검토</div><div class="v tnum">{{ counts['new'] }}<small>건</small></div></div>
+  <div>
+    <div class="k">제출된 자료 검토 완료율</div>
+    <div class="v tnum">{% if rate is none %}—{% else %}{{ '%.1f'|format(rate) }}<small>%</small>{% endif %}</div>
+  </div>
+</div>
+<p class="note">
+  분모는 이 귀속연도에 <b>제출된 서류 묶음 수</b>입니다.
+  모든 필수 서류가 제출됐는지, 신고 준비가 끝났는지를 뜻하지 않습니다.
+  현재 파일과 동일한 중복 접수는 분모에 넣지 않습니다.
+</p>
+
+<div class="sect">
+  <form method="get" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+    <select name="year" class="btn" style="padding:7px 10px">
+      {% for y in years %}<option value="{{ y }}" {{ 'selected' if y==tax_year }}>{{ y }}년 귀속</option>{% endfor %}
+      {% if not years %}<option value="{{ tax_year }}">{{ tax_year }}년 귀속</option>{% endif %}
+    </select>
+    <select name="state" class="btn" style="padding:7px 10px">
+      <option value="">검토 상태 전체</option>
+      {% for k,v in ReviewState.LABELS.items() %}
+      <option value="{{ k }}" {{ 'selected' if k==state_filter }}>{{ v }}</option>{% endfor %}
+    </select>
+    <select name="type" class="btn" style="padding:7px 10px">
+      <option value="">서류 종류 전체</option>
+      {% for k,v in DocType.LABELS.items() %}
+      <option value="{{ k }}" {{ 'selected' if k==type_filter }}>{{ v }}</option>{% endfor %}
+    </select>
+    <input type="text" name="q" value="{{ kw }}" placeholder="사번·성명·서류명 검색"
+           style="flex:1;min-width:180px;padding:7px 12px;border:1px solid var(--line);border-radius:8px">
+    <button class="btn" type="submit">조회</button>
+  </form>
+
+  <div class="list">
+    <div class="li h">
+      <span>직원</span><span>서류</span><span>변경 요약</span><span>현재 버전</span><span class="right">검토 상태</span>
+    </div>
+    {% for r in rows %}
+    <div class="li">
+      <a class="who" href="{{ url_for('main.employee', emp_id=r.group.employee_id, year=tax_year) }}"
+         style="text-decoration:none">
+        {{ r.group.employee.name }}<s>{{ r.group.employee.emp_no }}</s>
+      </a>
+      <a class="nm" href="{{ url_for('main.version_detail', vid=r.version.id) }}" style="text-decoration:none">
+        {{ r.group.display_name }}<s>{{ r.group.doc_type_label }}</s>
+      </a>
+      <span class="note">{{ r.summary or '—' }}</span>
+      <span class="ver">{{ r.version.label if r.version else '—' }}</span>
+      <span class="right"><span class="tag {{ r.state }}">{{ ReviewState.LABELS[r.state] }}</span></span>
+    </div>
+    {% else %}
+    <div style="padding:34px 0;text-align:center;color:var(--mut)">
+      해당 조건의 자료가 없습니다.
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="sect">
+  <h2>추출 작업 상태</h2>
+  <p class="note">기계가 읽은 결과입니다. 위의 검토 상태(사람이 확인한 것)와 구분해서 봅니다.</p>
+  <div class="stats" style="border-top-width:1px">
+    {% for k,v in RunStatus.LABELS.items() %}
+    <div><div class="k">{{ v }}</div><div class="v tnum" style="font-size:19px">{{ run_counts[k] }}</div></div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="sect">
+  <div class="infobox">
+    <b>이 앱의 '검토 완료'는</b> 담당자가 해당 자료 버전을 확인했다는 뜻입니다.
+    세법상 공제 적격 판정이나 연말정산 신고 완료를 의미하지 않습니다.
+    공제 가능 여부·세액 계산·위변조 판정은 이 프로그램에서 수행하지 않습니다.
+  </div>
+</div>
+{% endblock %}

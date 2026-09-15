@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}자료 등록{% endblock %}
+{% block h1 %}자료 등록{% endblock %}
+{% block crumb %}담당자가 직원에게 받은 PDF를 대신 등록합니다{% endblock %}
+
+{% block body %}
+<div style="max-width:620px">
+  <form method="post" enctype="multipart/form-data" class="panel">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+
+    <div class="fld">
+      <label>직원</label>
+      <select name="employee_id" id="emp" required onchange="location.href='{{ url_for('main.upload') }}?employee_id='+this.value">
+        <option value="">선택하세요</option>
+        {% for e in employees %}
+        <option value="{{ e.id }}" {{ 'selected' if e.id==sel_emp }}>{{ e.name }} ({{ e.emp_no }})</option>
+        {% endfor %}
+      </select>
+      <div class="hint">배정된 직원만 표시됩니다. 파일명이나 OCR로 읽은 성명으로 직원을 자동 확정하지 않습니다.</div>
+    </div>
+
+    <div class="fld">
+      <label>귀속연도</label>
+      <input type="number" name="tax_year" value="{{ default_year }}" required>
+    </div>
+
+    <div class="fld">
+      <label>제출 구분</label>
+      <label style="font-weight:500;display:block;margin:6px 0">
+        <input type="radio" name="submit_kind" value="new" checked onchange="toggle()"> 새 서류 추가
+      </label>
+      <label style="font-weight:500;display:block">
+        <input type="radio" name="submit_kind" value="revision" onchange="toggle()"> 기존 서류의 수정본
+      </label>
+      <div class="hint">
+        같은 종류의 영수증이 여러 장일 수 있으므로, '직원+서류 종류'만으로 자동 교체하지 않습니다.
+        수정본은 교체할 서류를 직접 지정해야 합니다.
+      </div>
+    </div>
+
+    <div id="newbox">
+      <div class="fld">
+        <label>서류 종류</label>
+        <select name="doc_type">
+          {% for k,v in DocType.LABELS.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
+        </select>
+        <div class="hint">간소화자료·기부금영수증은 지원 서식에 한해 자동 추출합니다. 기타는 원본 조회와 수동 검토만 제공합니다.</div>
+      </div>
+      <div class="fld">
+        <label>서류 표시명</label>
+        <input type="text" name="display_name" placeholder="예: A기관 기부금영수증">
+      </div>
+    </div>
+
+    <div id="revbox" style="display:none">
+      <div class="fld">
+        <label>교체할 기존 서류</label>
+        <select name="group_id">
+          <option value="">선택하세요</option>
+          {% for gr in groups %}
+          <option value="{{ gr.id }}">{{ gr.display_name }} ({{ gr.tax_year }}년 · {{ gr.doc_type_label }})</option>
+          {% endfor %}
+        </select>
+        {% if not groups %}<div class="hint">직원을 먼저 선택하면 기존 서류 목록이 나옵니다.</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="fld">
+      <label>PDF 파일</label>
+      <input type="file" name="pdf" accept="application/pdf" required>
+      <div class="hint">파일당 20MB · 50페이지까지. 확장자뿐 아니라 실제 PDF로 열리는지 확인합니다.</div>
+    </div>
+
+    <button class="btn primary" type="submit" style="width:100%;padding:11px">등록하고 읽기 시작</button>
+  </form>
+
+  <div class="infobox" style="margin-top:14px">
+    등록한 원본은 서버의 비공개 경로에 변경 없이 보관하며, 권한이 있는 담당자만 조회할 수 있습니다.
+    로컬 데이터베이스와 파일로 저장되며, 브라우저를 닫아도 삭제되지 않습니다.
+  </div>
+</div>
+
+<script>
+function toggle(){
+  var rev = document.querySelector('input[name=submit_kind]:checked').value === 'revision';
+  document.getElementById('revbox').style.display = rev ? 'block' : 'none';
+  document.getElementById('newbox').style.display = rev ? 'none' : 'block';
+}
+toggle();
+</script>
+{% endblock %}
