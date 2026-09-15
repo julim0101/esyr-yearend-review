@@ -138,6 +138,73 @@ def _groups_query(tax_year=None):
     return q
 
 
+def build_group_states(groups):
+    """묶음별 (현재 버전 · 검토 상태 · 추출 상태 · 변경 요약)을 한 번에 계산한다.
+
+    모델 프로퍼티(current_version / latest_run / is_reviewed)는 매번 DB를 조회한다.
+    목록 화면에서 그대로 쓰면 묶음 수 × 3회씩 왕복이 생겨 매우 느리다.
+    여기서 필요한 것을 통째로 가져와 파이썬에서 조립한다.
+    """
+    from .models import Comparison
+
+    if not groups:
+        return {}
+
+    gids = [g_.id for g_ in groups]
+    versions = DocumentVersion.query.filter(DocumentVersion.group_id.in_(gids)).all()
+    vids = [v.id for v in versions]
+
+    runs = (
+        ExtractionRun.query.filter(ExtractionRun.version_id.in_(vids or [-1]))
+        .order_by(ExtractionRun.revision_no)
+        .all()
+    )
+    latest_run_by_v = {r.version_id: r for r in runs}   # revision_no 오름차순 → 마지막이 남음
+
+    reviewed_vids = {
+        r.version_id
+        for r in Review.query.filter(
+            Review.version_id.in_(vids or [-1]), Review.kind == "complete"
+        ).all()
+    }
+
+    cmps = (
+        Comparison.query.filter(Comparison.new_version_id.in_(vids or [-1]))
+        .order_by(Comparison.id)
+        .all()
+    )
+    cmp_by_v = {c.new_version_id: c for c in cmps}
+
+    ver_by_id = {v.id: v for v in versions}
+    by_group = {}
+    for v in versions:
+        by_group.setdefault(v.group_id, []).append(v)
+
+    out = {}
+    for grp in groups:
+        vs = sorted(by_group.get(grp.id, []), key=lambda v: v.seq)
+        cur = ver_by_id.get(grp.current_version_id) or (vs[-1] if vs else None)
+        run = latest_run_by_v.get(cur.id) if cur else None
+
+        if cur is None:
+            state = ReviewState.NEW
+        elif cur.id in reviewed_vids:
+            state = ReviewState.DONE
+        elif run is None or run.status in (
+            RunStatus.PENDING, RunStatus.RUNNING, RunStatus.FAILED, RunStatus.PARTIAL
+        ):
+            state = ReviewState.EXTRACT_CHECK
+        else:
+            state = ReviewState.NEW if cur.seq == 1 else ReviewState.RECHECK
+
+        cmp_ = cmp_by_v.get(cur.id) if cur else None
+        out[grp.id] = dict(
+            version=cur, run=run, state=state,
+            summary=change_summary_text(load_result(cmp_)) if cmp_ else "",
+        )
+    return out
+
+
 @bp.route("/")
 @login_required
 def dashboard():
@@ -148,12 +215,12 @@ def dashboard():
     type_filter = request.args.get("type") or ""
 
     groups = _groups_query(tax_year).all()
+    states = build_group_states(groups)
 
     rows = []
     for grp in groups:
-        cur = grp.current_version
-        state = grp.review_state
-        if state_filter and state != state_filter:
+        st = states[grp.id]
+        if state_filter and st["state"] != state_filter:
             continue
         if type_filter and grp.doc_type != type_filter:
             continue
@@ -161,21 +228,17 @@ def dashboard():
             hay = f"{grp.employee.emp_no} {grp.employee.name} {grp.display_name}"
             if kw.lower() not in hay.lower():
                 continue
-        cmp_ = latest_comparison(grp, cur) if cur else None
         rows.append(dict(
-            group=grp, version=cur, state=state,
-            summary=change_summary_text(load_result(cmp_)) if cmp_ else "",
+            group=grp, version=st["version"], state=st["state"], summary=st["summary"],
         ))
 
     counts = {k: 0 for k in ReviewState.LABELS}
-    for grp in groups:
-        counts[grp.review_state] += 1
     run_counts = {k: 0 for k in RunStatus.LABELS}
     for grp in groups:
-        cur = grp.current_version
-        run = cur.latest_run if cur else None
-        if run:
-            run_counts[run.status] += 1
+        st = states[grp.id]
+        counts[st["state"]] += 1
+        if st["run"]:
+            run_counts[st["run"].status] += 1
 
     total = len(groups)
     done = counts[ReviewState.DONE]
@@ -198,8 +261,24 @@ def employee(emp_id):
     years = sorted({g_.tax_year for g_ in emp.doc_groups}, reverse=True)
     tax_year = request.args.get("year", type=int) or (years[0] if years else datetime.now().year - 1)
     groups = [g_ for g_ in emp.doc_groups if g_.tax_year == tax_year]
+    states = build_group_states(groups)
+    # 버전 목록도 한 번에
+    vmap = {}
+    if groups:
+        allv = DocumentVersion.query.filter(
+            DocumentVersion.group_id.in_([g_.id for g_ in groups])
+        ).order_by(DocumentVersion.seq).all()
+        rvids = {
+            r.version_id for r in Review.query.filter(
+                Review.version_id.in_([v.id for v in allv] or [-1]),
+                Review.kind == "complete",
+            ).all()
+        }
+        for v in allv:
+            vmap.setdefault(v.group_id, []).append((v, v.id in rvids))
     return render_template(
-        "employee.html", emp=emp, groups=groups, years=years, tax_year=tax_year
+        "employee.html", emp=emp, groups=groups, years=years, tax_year=tax_year,
+        states=states, vmap=vmap,
     )
 
 
@@ -471,20 +550,27 @@ def export_csv():
     tax_year = request.args.get("year", type=int)
     groups = _groups_query(tax_year).all()
 
+    states = build_group_states(groups)
+    cur_ids = [st["version"].id for st in states.values() if st["version"]]
+    revs = {}
+    for r in Review.query.filter(
+        Review.version_id.in_(cur_ids or [-1]), Review.kind == "complete"
+    ).order_by(Review.created_at).all():
+        revs[r.version_id] = r
+
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(["사번", "성명", "귀속연도", "서류명", "서류종류",
                 "현재버전", "검토상태", "변경요약", "검토자", "검토시각"])
     for grp in groups:
-        cur = grp.current_version
-        cmp_ = latest_comparison(grp, cur) if cur else None
-        summary = change_summary_text(load_result(cmp_)) if cmp_ else ""
-        rev = next((r for r in reversed(cur.reviews) if r.kind == "complete"), None) if cur else None
+        st = states[grp.id]
+        cur = st["version"]
+        rev = revs.get(cur.id) if cur else None
         w.writerow([
             _safe_csv(grp.employee.emp_no), _safe_csv(grp.employee.name), grp.tax_year,
             _safe_csv(grp.display_name), grp.doc_type_label,
-            cur.label if cur else "", ReviewState.LABELS[grp.review_state],
-            _safe_csv(summary),
+            cur.label if cur else "", ReviewState.LABELS[st["state"]],
+            _safe_csv(st["summary"]),
             rev.reviewer.display_name if rev else "",
             rev.created_at.strftime("%Y-%m-%d %H:%M") if rev else "",
         ])

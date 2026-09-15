@@ -105,8 +105,12 @@ class User(db.Model):
     active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
 
+    # Werkzeug 기본값(scrypt)은 서버리스의 약한 CPU에서 로그인 한 번에 수 초가 걸린다.
+    # pbkdf2 로 낮춰 응답성을 확보한다. 사내 도구 수준에서는 충분하다.
+    PASSWORD_METHOD = "pbkdf2:sha256:120000"
+
     def set_password(self, raw):
-        self.password_hash = generate_password_hash(raw)
+        self.password_hash = generate_password_hash(raw, method=self.PASSWORD_METHOD)
 
     def check_password(self, raw):
         return check_password_hash(self.password_hash, raw)

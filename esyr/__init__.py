@@ -23,7 +23,8 @@ STORAGE_DIR = os.path.join(INSTANCE_DIR, "storage")
 
 
 def _database_uri():
-    url = os.environ.get("DATABASE_URL", "").strip()
+    # BOM·공백이 섞여 들어오는 경우가 있어 방어적으로 제거한다
+    url = os.environ.get("DATABASE_URL", "").lstrip("﻿").strip()
     if not url:
         return "sqlite:///" + os.path.join(INSTANCE_DIR, "esyr.sqlite3")
     # Supabase / Heroku 계열이 주는 postgres:// 를 SQLAlchemy 드라이버 형식으로 맞춘다

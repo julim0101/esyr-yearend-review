@@ -26,19 +26,19 @@
       <div class="note">{{ grp.doc_type_label }}</div>
     </td>
     <td>
-      {% for v in grp.version_list %}
+      {% for v, v_done in vmap.get(grp.id, []) %}
       <div style="font-size:12.5px;padding:2px 0;{{ 'opacity:.55' if v.id != grp.current_version_id }}">
         <a href="{{ url_for('main.version_detail', vid=v.id) }}" style="font-weight:600">{{ v.label }}</a>
         <span class="note">
           · {{ v.uploaded_at.strftime('%m/%d %H:%M') }}
           · {{ SubmitKind.LABELS[v.submit_kind] }}
-          {% if v.is_reviewed %}<span class="tag done" style="margin-left:4px">검토 완료</span>{% endif %}
+          {% if v_done %}<span class="tag done" style="margin-left:4px">검토 완료</span>{% endif %}
         </span>
       </div>
       {% endfor %}
     </td>
-    <td class="tnum">{{ grp.current_version.label if grp.current_version else '—' }}</td>
-    <td><span class="tag {{ grp.review_state }}">{{ ReviewState.LABELS[grp.review_state] }}</span></td>
+    <td class="tnum">{{ states[grp.id].version.label if states[grp.id].version else '—' }}</td>
+    <td><span class="tag {{ states[grp.id].state }}">{{ ReviewState.LABELS[states[grp.id].state] }}</span></td>
     <td>
       <a class="btn sm" href="{{ url_for('main.upload', employee_id=emp.id, group_id=grp.id) }}">수정본</a>
     </td>
