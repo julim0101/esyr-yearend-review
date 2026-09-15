@@ -1,5 +1,8 @@
 # ESYR · Etners Smart Year-end Review
 
+**배포:** https://esyr-yearend-review.vercel.app
+(Vercel + Supabase Postgres + Supabase Storage · 서울 리전)
+
 연말정산 증빙 PDF의 **추가·수정 제출본**을 이전에 검토한 버전과 비교해,
 무엇이 달라졌고 **무엇을 다시 확인해야 하는지**만 남기는 도구.
 
